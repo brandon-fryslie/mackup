@@ -7,7 +7,7 @@ Mackup. Name, files, ...
 
 import os
 
-from . import utils
+from . import colors, utils
 from .mackup import Mackup
 
 
@@ -74,25 +74,41 @@ class ApplicationProfile:
                     and os.path.exists(mackup_filepath)
                     and os.path.samefile(home_filepath, mackup_filepath)
                 ):
-                    if self.verbose:
-                        print(
-                            f"Skipping {home_filepath}\n"
-                            f"  already linked to\n  {mackup_filepath}",
-                        )
+                    colors.vlog(
+                        f"Skipping {home_filepath}\n"
+                        f"  already linked to\n  {mackup_filepath}",
+                        self.verbose,
+                    )
+                    continue
+
+                # If a backup already exists, compare against it. drift is None
+                # when there's no prior backup to compare.
+                drift = (
+                    utils.diff_paths(home_filepath, mackup_filepath)
+                    if os.path.lexists(mackup_filepath)
+                    else None
+                )
+                if drift is not None and drift.identical:
+                    colors.vlog(f"{filename} already in sync, skipping", self.verbose)
                     continue
 
                 if self.verbose:
-                    print(
+                    colors.info_log(
                         f"Backing up\n  {home_filepath}\n  to\n  {mackup_filepath} ...",
                     )
                 else:
-                    print(f"Backing up {filename} ...")
+                    colors.info_log(f"Backing up {filename} ...")
 
                 if self.dry_run:
                     continue
 
-                # If exists mackup/file
-                if os.path.lexists(mackup_filepath):
+                # An existing backup differs: show what changed, then confirm.
+                if drift is not None:
+                    if drift.detail:
+                        colors.warning_log(
+                            f"{filename} differs between home and Mackup:",
+                        )
+                        print(drift.detail)
                     # Name it right
                     file_type: str
                     if os.path.isfile(mackup_filepath):
@@ -118,7 +134,7 @@ class ApplicationProfile:
                 try:
                     utils.copy(home_filepath, mackup_filepath)
                 except PermissionError as e:
-                    print(
+                    colors.error_log(
                         f"Error: Unable to copy file from {home_filepath} to "
                         f"{mackup_filepath} due to permission issue: {e}",
                     )
@@ -141,18 +157,34 @@ class ApplicationProfile:
 
             # If config_file exists in mackup and is a real file/folder
             if (os.path.isfile(mackup_filepath) or os.path.isdir(mackup_filepath)):
+                # If a home file already exists, compare against it. drift is
+                # None when there's no existing home file to compare.
+                drift = (
+                    utils.diff_paths(mackup_filepath, home_filepath)
+                    if os.path.lexists(home_filepath)
+                    else None
+                )
+                if drift is not None and drift.identical:
+                    colors.vlog(f"{filename} already in sync, skipping", self.verbose)
+                    continue
+
                 if self.verbose:
-                    print(
+                    colors.info_log(
                         f"Recovering\n  {mackup_filepath}\n  to\n  {home_filepath} ...",
                     )
                 else:
-                    print(f"Recovering {filename} ...")
+                    colors.info_log(f"Recovering {filename} ...")
 
                 if self.dry_run:
                     continue
 
-                # If exists home/file
-                if os.path.lexists(home_filepath):
+                # An existing home file differs: show what changed, then confirm.
+                if drift is not None:
+                    if drift.detail:
+                        colors.warning_log(
+                            f"{filename} differs between Mackup and home:",
+                        )
+                        print(drift.detail)
                     # Name it right
                     if os.path.isfile(home_filepath):
                         file_type = "file"
@@ -177,7 +209,7 @@ class ApplicationProfile:
                 try:
                     utils.copy(mackup_filepath, home_filepath)
                 except PermissionError as e:
-                    print(
+                    colors.error_log(
                         f"Error: Unable to copy file from {mackup_filepath} to "
                         f"{home_filepath} due to permission issue: {e}",
                     )

@@ -2,16 +2,21 @@
 
 import base64
 import binascii
+import difflib
+import filecmp
 import os
 import platform
+import plistlib
+import pprint
 import shutil
 import sqlite3
 import stat
 import subprocess
 import sys
-from typing import NoReturn
+from typing import NamedTuple, NoReturn
+from xml.parsers.expat import ExpatError
 
-from . import constants
+from . import colors, constants
 
 # Flag that controls how user confirmation works.
 # If True, the user wants to say "yes" to everything.
@@ -399,3 +404,156 @@ def can_file_be_synced_on_current_platform(path: str) -> bool:
         can_be_synced = False
 
     return can_be_synced
+
+
+# --- Drift detection -------------------------------------------------------
+# Once Mackup copies files (rather than symlinking), the home copy and the
+# Mackup copy can diverge. These helpers describe that divergence so a backup
+# or restore can skip when nothing changed and show *what* changed before
+# overwriting, instead of a blind "are you sure?".
+
+# Sentinel: a path that could not be parsed as a plist.
+_NOT_A_PLIST = object()
+
+
+class DiffResult(NamedTuple):
+    """Outcome of comparing two paths.
+
+    identical: the two paths hold the same content.
+    detail: a colored, human-readable rendering of the difference. Empty when
+        identical, or when the paths are not content-comparable (a symlink, or
+        a file-vs-folder type mismatch) and the caller should just prompt.
+    """
+
+    identical: bool
+    detail: str
+
+
+def diff_paths(src: str, dst: str) -> DiffResult:
+    """Compare two filesystem paths and describe how they differ.
+
+    Reads the filesystem and returns a *description* only; the caller decides
+    whether to skip, warn, or overwrite. Symlinks and file/folder type
+    mismatches are reported as differing with no detail, so the caller falls
+    back to its plain confirmation prompt.
+    """
+    if os.path.islink(src) or os.path.islink(dst):
+        return DiffResult(identical=False, detail="")
+
+    src_is_dir = os.path.isdir(src)
+    if src_is_dir != os.path.isdir(dst):
+        return DiffResult(
+            identical=False,
+            detail=colors.yellow(
+                f"  type mismatch: {'folder' if src_is_dir else 'file'} vs "
+                f"{'file' if src_is_dir else 'folder'}",
+            ),
+        )
+
+    if src_is_dir:
+        return _diff_dirs(src, dst)
+    return _diff_files(src, dst)
+
+
+def _diff_files(a: str, b: str) -> DiffResult:
+    """Compare two regular files: plist-aware, then text, then binary."""
+    plist_a = _load_plist(a)
+    plist_b = _load_plist(b)
+    if plist_a is not _NOT_A_PLIST and plist_b is not _NOT_A_PLIST:
+        if plist_a == plist_b:
+            return DiffResult(identical=True, detail="")
+        return DiffResult(
+            identical=False,
+            detail=_unified_diff(
+                pprint.pformat(plist_a).splitlines(),
+                pprint.pformat(plist_b).splitlines(),
+                a,
+                b,
+            ),
+        )
+
+    text_a = _read_text(a)
+    text_b = _read_text(b)
+    if text_a is not None and text_b is not None:
+        if text_a == text_b:
+            return DiffResult(identical=True, detail="")
+        return DiffResult(
+            identical=False,
+            detail=_unified_diff(text_a.splitlines(), text_b.splitlines(), a, b),
+        )
+
+    identical = filecmp.cmp(a, b, shallow=False)
+    detail = "" if identical else colors.yellow("  binary contents differ")
+    return DiffResult(identical=identical, detail=detail)
+
+
+def _diff_dirs(a: str, b: str) -> DiffResult:
+    """Compare two folders recursively by content (not shallow stat)."""
+    changed: list[str] = []
+    only_src: list[str] = []
+    only_dst: list[str] = []
+
+    def walk(dcmp: filecmp.dircmp, rel: str = "") -> None:
+        only_src.extend(os.path.join(rel, name) for name in dcmp.left_only)
+        only_dst.extend(os.path.join(rel, name) for name in dcmp.right_only)
+        # common_funny = exists both sides but not comparable (type differs)
+        changed.extend(os.path.join(rel, name) for name in dcmp.common_funny)
+        changed.extend(
+            os.path.join(rel, name)
+            for name in dcmp.common_files
+            if not filecmp.cmp(
+                os.path.join(dcmp.left, name),
+                os.path.join(dcmp.right, name),
+                shallow=False,
+            )
+        )
+        for name, sub in dcmp.subdirs.items():
+            walk(sub, os.path.join(rel, name))
+
+    walk(filecmp.dircmp(a, b))
+
+    if not (changed or only_src or only_dst):
+        return DiffResult(identical=True, detail="")
+
+    parts: list[str] = []
+    parts.extend(colors.yellow(f"  changed: {name}") for name in sorted(changed))
+    parts.extend(colors.green(f"  only in source: {name}") for name in sorted(only_src))
+    parts.extend(colors.red(f"  only in target: {name}") for name in sorted(only_dst))
+    return DiffResult(identical=False, detail="\n".join(parts))
+
+
+def _unified_diff(a_lines: list[str], b_lines: list[str], a: str, b: str) -> str:
+    """Render a colored unified diff between two lists of lines."""
+    lines = difflib.unified_diff(a_lines, b_lines, fromfile=a, tofile=b, lineterm="")
+    return "\n".join(_color_diff_line(line) for line in lines)
+
+
+def _color_diff_line(line: str) -> str:
+    if line.startswith(("+++", "---")):
+        return colors.bold(line)
+    if line.startswith("+"):
+        return colors.green(line)
+    if line.startswith("-"):
+        return colors.red(line)
+    if line.startswith("@@"):
+        return colors.cyan(line)
+    return line
+
+
+def _load_plist(path: str) -> object:
+    """Parse a file as a plist, or return _NOT_A_PLIST if it isn't one."""
+    try:
+        with open(path, "rb") as plist_file:
+            return plistlib.load(plist_file)
+    except (ValueError, ExpatError, OSError):
+        # ValueError covers plistlib.InvalidFileException (not a plist).
+        return _NOT_A_PLIST
+
+
+def _read_text(path: str) -> str | None:
+    """Read a file as UTF-8 text, or return None if it is binary/unreadable."""
+    try:
+        with open(path, encoding="utf-8") as text_file:
+            return text_file.read()
+    except (UnicodeDecodeError, OSError):
+        return None
