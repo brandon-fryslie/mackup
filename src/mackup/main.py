@@ -51,7 +51,7 @@ from typing import Any
 
 from docopt import docopt
 
-from . import utils
+from . import colors, utils
 from .application import ApplicationProfile
 from .appsdb import ApplicationsDatabase
 from .constants import MACKUP_APP_NAME, VERSION
@@ -105,14 +105,44 @@ def _resolve_apps(app_name: str | None, ctx: _Context) -> set[str]:
     return ctx.mckp.get_apps_to_backup()
 
 
-def _run_action(ctx: _Context, app_names: set[str], action: str) -> None:
-    """Run an ApplicationProfile method over each app, in sorted order."""
+def _run_action(ctx: _Context, app_names: set[str], action: str) -> list[str]:
+    """Run an ApplicationProfile method over each app, in sorted order.
+
+    Returns the paths that failed to copy, aggregated across every app, so one
+    bad file in one app does not stop the others and the whole run's failures
+    can be surfaced at the end. Copy actions (backup/restore) report failures
+    this way; link actions report none, so the list is empty for them.
+    """
+    failed_paths: list[str] = []
     for app_name in sorted(app_names):
         app = ApplicationProfile(
             ctx.mckp, ctx.app_db.get_files(app_name), ctx.dry_run, ctx.verbose,
         )
         _print_app_header(app_name, ctx.verbose)
-        getattr(app, action)()
+        # link_install/link/link_uninstall return None (they report no copy
+        # failures); the copy actions return the list of paths that failed.
+        failed_paths.extend(getattr(app, action)() or [])
+    return failed_paths
+
+
+def _abort_on_copy_failures(failed_paths: list[str], operation: str) -> None:
+    """Turn any copy failures into a loud, non-zero exit.
+
+    Each failure was already reported on stderr as it happened; this re-surfaces
+    them as an end-of-run summary and exits non-zero, so a partial backup or
+    restore can never be mistaken for a complete one.
+    """
+    # [LAW:no-silent-failure] the run finished with unrecovered failures, so the
+    # exit code must say so. [LAW:effects-at-boundaries] the process-exit effect
+    # lives here at the command boundary, not inside the per-file copy loop.
+    if not failed_paths:
+        return
+    colors.error_log(
+        f"{operation} incomplete: {len(failed_paths)} file(s) could not be copied:",
+    )
+    for path in failed_paths:
+        colors.error_log(f"  {path}")
+    sys.exit(1)
 
 
 def _cmd_list(app_db: ApplicationsDatabase) -> None:
@@ -146,7 +176,8 @@ def _cmd_backup(args: dict[str, Any], ctx: _Context) -> None:
     ctx.mckp.check_for_usable_backup_env()
 
     # Create a backup of the files of each application
-    _run_action(ctx, app_names, "copy_files_to_mackup_folder")
+    failed = _run_action(ctx, app_names, "copy_files_to_mackup_folder")
+    _abort_on_copy_failures(failed, "Backup")
 
 
 def _cmd_restore(args: dict[str, Any], ctx: _Context) -> None:
@@ -154,7 +185,8 @@ def _cmd_restore(args: dict[str, Any], ctx: _Context) -> None:
     ctx.mckp.check_for_usable_restore_env()
 
     # Recover a backup of the files of each application
-    _run_action(ctx, app_names, "copy_files_from_mackup_folder")
+    failed = _run_action(ctx, app_names, "copy_files_from_mackup_folder")
+    _abort_on_copy_failures(failed, "Restore")
 
 
 def _cmd_link_install(args: dict[str, Any], ctx: _Context) -> None:

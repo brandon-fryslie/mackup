@@ -47,9 +47,13 @@ class ApplicationProfile:
             os.path.join(self.mackup.mackup_folder, filename),
         )
 
-    def copy_files_to_mackup_folder(self) -> None:
+    def copy_files_to_mackup_folder(self) -> list[str]:
         """
         Backup the application config files to the Mackup folder.
+
+        Returns the home paths that could not be copied. The list is empty on a
+        fully successful backup; a non-empty list is the caller's signal that
+        the backup is partial and must not report success.
 
         Algorithm:
             for config_file
@@ -62,6 +66,9 @@ class ApplicationProfile:
                             rm mackup/file
                     cp home/file mackup/file
         """
+        # [LAW:dataflow-not-control-flow] failures flow up as data, not as a
+        # traceback or a silent skip; the boundary turns them into a non-zero exit.
+        failed_paths: list[str] = []
         for filename in self.files:
             (home_filepath, mackup_filepath) = self.get_filepaths(filename)
 
@@ -131,17 +138,28 @@ class ApplicationProfile:
                         continue
 
                 # Copy the file
+                # [LAW:no-silent-failure] one failing file must not abort the run
+                # or exit clean: report it loudly on stderr, record it, keep going.
+                # [LAW:one-type-per-behavior] every copy failure (permission, disk
+                # full, copytree's shutil.Error) is one OSError handled one way.
                 try:
                     utils.copy(home_filepath, mackup_filepath)
-                except PermissionError as e:
+                except OSError as e:
                     colors.error_log(
-                        f"Error: Unable to copy file from {home_filepath} to "
-                        f"{mackup_filepath} due to permission issue: {e}",
+                        f"Error: Unable to copy {home_filepath} to "
+                        f"{mackup_filepath}: {e}",
                     )
+                    failed_paths.append(home_filepath)
 
-    def copy_files_from_mackup_folder(self) -> None:
+        return failed_paths
+
+    def copy_files_from_mackup_folder(self) -> list[str]:
         """
         Recover the application config files from the Mackup folder.
+
+        Returns the mackup paths that could not be copied back. The list is
+        empty on a fully successful restore; a non-empty list is the caller's
+        signal that the restore is partial and must not report success.
 
         Algorithm:
             for config_file
@@ -152,6 +170,9 @@ class ApplicationProfile:
                             rm home/file
                     cp mackup/file home/file
         """
+        # [LAW:dataflow-not-control-flow] mirror of the backup path: failures
+        # flow up as data so the boundary can exit non-zero.
+        failed_paths: list[str] = []
         for filename in self.files:
             (home_filepath, mackup_filepath) = self.get_filepaths(filename)
 
@@ -206,13 +227,18 @@ class ApplicationProfile:
                         continue
 
                 # Copy the file
+                # [LAW:no-silent-failure] see copy_files_to_mackup_folder: report,
+                # record, and keep going so a partial restore is never silent.
                 try:
                     utils.copy(mackup_filepath, home_filepath)
-                except PermissionError as e:
+                except OSError as e:
                     colors.error_log(
-                        f"Error: Unable to copy file from {mackup_filepath} to "
-                        f"{home_filepath} due to permission issue: {e}",
+                        f"Error: Unable to copy {mackup_filepath} to "
+                        f"{home_filepath}: {e}",
                     )
+                    failed_paths.append(mackup_filepath)
+
+        return failed_paths
 
     def link_install(self) -> None:
         """

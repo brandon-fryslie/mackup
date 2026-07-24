@@ -63,24 +63,24 @@ class TestApplicationProfile(unittest.TestCase):
         with patch("mackup.application.utils.copy") as mock_copy:
             mock_copy.side_effect = PermissionError("Permission denied")
 
-            # Capture stdout to verify the error message
-            captured_output = StringIO()
-            sys.stdout = captured_output
-
-            # Call the method
-            self.app_profile.copy_files_to_mackup_folder()
-
-            # Restore stdout
-            sys.stdout = sys.__stdout__
+            # The failure must be reported on stderr, not stdout, so a pipeline
+            # can detect it.
+            captured_err = StringIO()
+            sys.stderr = captured_err
+            try:
+                failed = self.app_profile.copy_files_to_mackup_folder()
+            finally:
+                sys.stderr = sys.__stderr__
 
             # Verify that copy was called
             mock_copy.assert_called_once()
 
-            # Verify that the error message was printed
-            output = captured_output.getvalue()
-            assert "Error: Unable to copy file" in output
-            assert "permission issue" in output
-            assert home_filepath in output
+            # The error names the file on stderr...
+            err = captured_err.getvalue()
+            assert "Error: Unable to copy" in err
+            assert home_filepath in err
+            # ...and the path is returned so the caller can exit non-zero.
+            assert failed == [home_filepath]
 
     def test_files_are_sorted_for_deterministic_processing(self):
         """Application files should always be processed in sorted order."""
@@ -115,24 +115,24 @@ class TestApplicationProfile(unittest.TestCase):
         with patch("mackup.application.utils.copy") as mock_copy:
             mock_copy.side_effect = PermissionError("Permission denied")
 
-            # Capture stdout to verify the error message
+            # Progress goes to stdout; the error goes to stderr.
             captured_output = StringIO()
+            captured_err = StringIO()
             sys.stdout = captured_output
-
-            # Call the method
-            app_profile_verbose.copy_files_to_mackup_folder()
-
-            # Restore stdout
-            sys.stdout = sys.__stdout__
+            sys.stderr = captured_err
+            try:
+                failed = app_profile_verbose.copy_files_to_mackup_folder()
+            finally:
+                sys.stdout = sys.__stdout__
+                sys.stderr = sys.__stderr__
 
             # Verify that copy was called
             mock_copy.assert_called_once()
 
-            # Verify that the verbose backing up message and error message were printed
-            output = captured_output.getvalue()
-            assert "Backing up" in output
-            assert "Error: Unable to copy file" in output
-            assert "permission issue" in output
+            # The verbose progress line is on stdout; the error is on stderr.
+            assert "Backing up" in captured_output.getvalue()
+            assert "Error: Unable to copy" in captured_err.getvalue()
+            assert failed == [home_filepath]
 
     def test_copy_files_from_mackup_folder_permission_error(self):
         """Test PermissionError handling in copy_files_from_mackup_folder."""
@@ -148,24 +148,22 @@ class TestApplicationProfile(unittest.TestCase):
         with patch("mackup.application.utils.copy") as mock_copy:
             mock_copy.side_effect = PermissionError("Permission denied")
 
-            # Capture stdout to verify the error message
-            captured_output = StringIO()
-            sys.stdout = captured_output
-
-            # Call the method
-            self.app_profile.copy_files_from_mackup_folder()
-
-            # Restore stdout
-            sys.stdout = sys.__stdout__
+            # The failure must be reported on stderr, not stdout.
+            captured_err = StringIO()
+            sys.stderr = captured_err
+            try:
+                failed = self.app_profile.copy_files_from_mackup_folder()
+            finally:
+                sys.stderr = sys.__stderr__
 
             # Verify that copy was called
             mock_copy.assert_called_once()
 
-            # Verify that the error message was printed
-            output = captured_output.getvalue()
-            assert "Error: Unable to copy file" in output
-            assert "permission issue" in output
-            assert mackup_filepath in output
+            # The error names the file on stderr, and the path is returned.
+            err = captured_err.getvalue()
+            assert "Error: Unable to copy" in err
+            assert mackup_filepath in err
+            assert failed == [mackup_filepath]
 
     def test_copy_files_from_mackup_folder_permission_error_verbose(self):
         """Test PermissionError handling in copy_files_from_mackup_folder verbose."""
@@ -189,24 +187,24 @@ class TestApplicationProfile(unittest.TestCase):
         with patch("mackup.application.utils.copy") as mock_copy:
             mock_copy.side_effect = PermissionError("Permission denied")
 
-            # Capture stdout to verify the error message
+            # Progress goes to stdout; the error goes to stderr.
             captured_output = StringIO()
+            captured_err = StringIO()
             sys.stdout = captured_output
-
-            # Call the method
-            app_profile_verbose.copy_files_from_mackup_folder()
-
-            # Restore stdout
-            sys.stdout = sys.__stdout__
+            sys.stderr = captured_err
+            try:
+                failed = app_profile_verbose.copy_files_from_mackup_folder()
+            finally:
+                sys.stdout = sys.__stdout__
+                sys.stderr = sys.__stderr__
 
             # Verify that copy was called
             mock_copy.assert_called_once()
 
-            # Verify that the verbose recovering message and error message were printed
-            output = captured_output.getvalue()
-            assert "Recovering" in output
-            assert "Error: Unable to copy file" in output
-            assert "permission issue" in output
+            # The verbose progress line is on stdout; the error is on stderr.
+            assert "Recovering" in captured_output.getvalue()
+            assert "Error: Unable to copy" in captured_err.getvalue()
+            assert failed == [mackup_filepath]
 
     def test_copy_files_to_mackup_folder_with_directory_permission_error(self):
         """Test PermissionError with a directory in copy_files_to_mackup_folder."""
@@ -223,24 +221,22 @@ class TestApplicationProfile(unittest.TestCase):
         with patch("mackup.application.utils.copy") as mock_copy:
             mock_copy.side_effect = PermissionError("Permission denied for directory")
 
-            # Capture stdout to verify the error message
-            captured_output = StringIO()
-            sys.stdout = captured_output
-
-            # Call the method
-            self.app_profile.copy_files_to_mackup_folder()
-
-            # Restore stdout
-            sys.stdout = sys.__stdout__
+            # The failure must be reported on stderr, not stdout.
+            captured_err = StringIO()
+            sys.stderr = captured_err
+            try:
+                failed = self.app_profile.copy_files_to_mackup_folder()
+            finally:
+                sys.stderr = sys.__stderr__
 
             # Verify that copy was called
             mock_copy.assert_called_once()
 
-            # Verify that the error message was printed
-            output = captured_output.getvalue()
-            assert "Error: Unable to copy file" in output
-            assert "permission issue" in output
-            assert home_dirpath in output
+            # The error names the folder on stderr, and the path is returned.
+            err = captured_err.getvalue()
+            assert "Error: Unable to copy" in err
+            assert home_dirpath in err
+            assert failed == [home_dirpath]
 
     def test_copy_files_from_mackup_folder_with_directory_permission_error(self):
         """Test PermissionError with a directory in copy_files_from_mackup_folder."""
@@ -257,24 +253,87 @@ class TestApplicationProfile(unittest.TestCase):
         with patch("mackup.application.utils.copy") as mock_copy:
             mock_copy.side_effect = PermissionError("Permission denied for directory")
 
-            # Capture stdout to verify the error message
-            captured_output = StringIO()
-            sys.stdout = captured_output
-
-            # Call the method
-            self.app_profile.copy_files_from_mackup_folder()
-
-            # Restore stdout
-            sys.stdout = sys.__stdout__
+            # The failure must be reported on stderr, not stdout.
+            captured_err = StringIO()
+            sys.stderr = captured_err
+            try:
+                failed = self.app_profile.copy_files_from_mackup_folder()
+            finally:
+                sys.stderr = sys.__stderr__
 
             # Verify that copy was called
             mock_copy.assert_called_once()
 
-            # Verify that the error message was printed
-            output = captured_output.getvalue()
-            assert "Error: Unable to copy file" in output
-            assert "permission issue" in output
-            assert mackup_dirpath in output
+            # The error names the folder on stderr, and the path is returned.
+            err = captured_err.getvalue()
+            assert "Error: Unable to copy" in err
+            assert mackup_dirpath in err
+            assert failed == [mackup_dirpath]
+
+    def test_copy_files_to_mackup_folder_non_permission_oserror(self):
+        """A non-permission OSError (e.g. disk full) is handled like any other.
+
+        Regression for the split behavior where only PermissionError was caught
+        and every other OSError aborted the run with a raw traceback.
+        """
+        test_file = ".testfile"
+        home_filepath = os.path.join(self.temp_home, test_file)
+        with open(home_filepath, "w") as f:
+            f.write("test content")
+
+        with patch("mackup.application.utils.copy") as mock_copy:
+            mock_copy.side_effect = OSError("No space left on device")
+
+            captured_err = StringIO()
+            sys.stderr = captured_err
+            try:
+                # No traceback escapes: the OSError is caught, not propagated.
+                failed = self.app_profile.copy_files_to_mackup_folder()
+            finally:
+                sys.stderr = sys.__stderr__
+
+            assert "Error: Unable to copy" in captured_err.getvalue()
+            assert failed == [home_filepath]
+
+    def test_copy_files_to_mackup_folder_one_failure_continues(self):
+        """One failing file does not abort the rest; only it is returned."""
+        # Both files are processed in sorted order: .testfile, then .testfolder.
+        good_file = os.path.join(self.temp_home, ".testfile")
+        failing_dir = os.path.join(self.temp_home, ".testfolder")
+        with open(good_file, "w") as f:
+            f.write("good")
+        os.makedirs(failing_dir)
+
+        def fake_copy(src, dst):
+            if src == failing_dir:
+                raise OSError("boom")
+
+        with patch("mackup.application.utils.copy", side_effect=fake_copy) as mock_copy:
+            captured_err = StringIO()
+            sys.stderr = captured_err
+            try:
+                failed = self.app_profile.copy_files_to_mackup_folder()
+            finally:
+                sys.stderr = sys.__stderr__
+
+        # Both files were attempted even though the first-attempted one failed.
+        attempted = {call.args[0] for call in mock_copy.call_args_list}
+        assert attempted == {good_file, failing_dir}
+        # Only the failing path is reported and returned.
+        assert failed == [failing_dir]
+        assert failing_dir in captured_err.getvalue()
+        assert good_file not in captured_err.getvalue()
+
+    def test_copy_files_to_mackup_folder_success_returns_no_failures(self):
+        """A fully successful backup returns an empty failure list."""
+        with open(os.path.join(self.temp_home, ".testfile"), "w") as f:
+            f.write("good")
+        os.makedirs(os.path.join(self.temp_home, ".testfolder"))
+
+        with patch("mackup.application.utils.copy"):
+            failed = self.app_profile.copy_files_to_mackup_folder()
+
+        assert failed == []
 
     def test_copy_files_to_mackup_folder_dry_run_no_permission_error(self):
         """Test dry_run mode doesn't trigger PermissionError in backup."""

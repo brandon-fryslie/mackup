@@ -150,6 +150,11 @@ ignore = [
     "PTH", # use pathlib - os.path is fine for this codebase
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Tests legitimately reach into module-private helpers (e.g. main._cmd_backup)
+# to exercise command behavior directly.
+"tests/*" = ["SLF001"]
+
 # https://github.com/rvben/rumdl
 [tool.rumdl]
 exclude = ["tests"]

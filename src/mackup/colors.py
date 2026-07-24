@@ -7,6 +7,8 @@ reset so a nested reset inside the message does not strip color from the rest
 of the line.
 """
 
+import sys
+
 RESET = "\x1b[0m"
 
 
@@ -67,9 +69,15 @@ def success_log(*strs: str) -> None:
 
 
 def error_log(*strs: str) -> None:
-    """Error that does not exit (red)."""
+    """Error that does not exit (red).
+
+    Errors go to stderr so a script or pipeline can detect a failure and a
+    partial run is never mistaken for a clean one on stdout.
+    """
+    # [LAW:effects-at-boundaries] stdout is for parseable output; errors are
+    # diagnostics and belong on stderr (CLI binding: streams have defined semantics).
     for s in strs:
-        print(red(s))
+        print(red(s), file=sys.stderr)
 
 
 def vlog(message: str, verbose: bool) -> None:
