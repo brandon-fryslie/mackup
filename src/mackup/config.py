@@ -8,12 +8,9 @@ from pathlib import Path
 from .constants import (
     CUSTOM_APPS_DIR,
     CUSTOM_APPS_DIR_XDG,
-    ENGINE_DROPBOX,
-    ENGINE_FS,
-    ENGINE_GDRIVE,
-    ENGINE_ICLOUD,
     MACKUP_BACKUP_PATH,
     MACKUP_CONFIG_FILE,
+    Engine,
 )
 from .utils import (
     error,
@@ -62,12 +59,13 @@ class Config:
         """
         The engine used by the storage.
 
-        ENGINE_DROPBOX, ENGINE_GDRIVE, ENGINE_ICLOUD or ENGINE_FS.
+        One of Engine.DROPBOX, Engine.GOOGLE_DRIVE, Engine.ICLOUD or
+        Engine.FILE_SYSTEM.
 
         Returns:
             str
         """
-        return str(self._engine)
+        return self._engine.value
 
     @property
     def path(self) -> str:
@@ -230,29 +228,22 @@ class Config:
                     " your configuration file.",
                 )
 
-    def _parse_engine(self) -> str:
+    def _parse_engine(self) -> Engine:
         """
         Parse the storage engine in the config.
 
         Returns:
-            str
+            Engine
         """
         if self._parser.has_option("storage", "engine"):
-            engine = str(self._parser.get("storage", "engine"))
+            engine_str = self._parser.get("storage", "engine")
         else:
-            engine = ENGINE_DROPBOX
+            engine_str = Engine.DROPBOX.value
 
-        assert isinstance(engine, str)
-
-        if engine not in [
-            ENGINE_DROPBOX,
-            ENGINE_GDRIVE,
-            ENGINE_ICLOUD,
-            ENGINE_FS,
-        ]:
-            raise ConfigError(f"Unknown storage engine: {engine}")
-
-        return str(engine)
+        try:
+            return Engine(engine_str)
+        except ValueError:
+            raise ConfigError(f"Unknown storage engine: {engine_str}") from None
 
     def _parse_path(self) -> str:
         """
@@ -261,13 +252,16 @@ class Config:
         Returns:
             str
         """
-        if self.engine == ENGINE_DROPBOX:
+        # [LAW:types-are-the-program] Engine is a closed set of four; the final
+        # `else` can only fire if a member is added here without a case below,
+        # so it fails loudly instead of leaving `path` silently unbound.
+        if self._engine == Engine.DROPBOX:
             path = get_dropbox_folder_location()
-        elif self.engine == ENGINE_GDRIVE:
+        elif self._engine == Engine.GOOGLE_DRIVE:
             path = get_google_drive_folder_location()
-        elif self.engine == ENGINE_ICLOUD:
+        elif self._engine == Engine.ICLOUD:
             path = get_icloud_folder_location()
-        elif self.engine == ENGINE_FS:
+        elif self._engine == Engine.FILE_SYSTEM:
             if self._parser.has_option("storage", "path"):
                 cfg_path = self._parser.get("storage", "path")
                 path = os.path.join(os.environ["HOME"], cfg_path)
@@ -276,6 +270,10 @@ class Config:
                     "The required 'path' can't be found while"
                     " the 'file_system' engine is used.",
                 )
+        else:
+            raise AssertionError(
+                f"Unreachable: unhandled storage engine {self._engine!r}",
+            )
 
         return str(path)
 

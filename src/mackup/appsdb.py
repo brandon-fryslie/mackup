@@ -7,8 +7,16 @@ data from the Mackup Database (files).
 
 import configparser
 import os
+from typing import NamedTuple
 
 from .constants import APPS_DIR, CUSTOM_APPS_DIR, CUSTOM_APPS_DIR_XDG
+
+
+class _AppEntry(NamedTuple):
+    """One application's record: its display name and files to sync."""
+
+    name: str
+    configuration_files: set[str]
 
 
 class ApplicationsDatabase:
@@ -17,7 +25,7 @@ class ApplicationsDatabase:
     def __init__(self) -> None:
         """Create a ApplicationsDatabase instance."""
         # Build the dict that will contain the properties of each application
-        self.apps: dict[str, dict[str, str | set[str]]] = {}
+        self.apps: dict[str, _AppEntry] = {}
 
         for config_file in ApplicationsDatabase.get_config_files():
             config: configparser.ConfigParser = configparser.ConfigParser(
@@ -33,16 +41,11 @@ class ApplicationsDatabase:
                 # The app name is the cfg filename with the extension
                 app_name: str = filename[: -len(".cfg")]
 
-                # Start building a dict for this app
-                self.apps[app_name] = {}
-
-                # Add the fancy name for the app, for display purpose
+                # The fancy name for the app, for display purpose
                 app_pretty_name: str = config.get("application", "name")
-                self.apps[app_name]["name"] = app_pretty_name
 
-                # Add the configuration files to sync
+                # Collect the configuration files to sync
                 config_files: set[str] = set()
-                self.apps[app_name]["configuration_files"] = config_files
                 if config.has_section("configuration_files"):
                     for path in config.options("configuration_files"):
                         if path.startswith("/"):
@@ -69,6 +72,10 @@ class ApplicationsDatabase:
                         xdg_path = os.path.join(xdg_config_home, path)
                         xdg_path = xdg_path.replace(home, "")
                         config_files.add(xdg_path)
+
+                self.apps[app_name] = _AppEntry(
+                    name=app_pretty_name, configuration_files=config_files,
+                )
 
     @staticmethod
     def get_config_files() -> set[str]:
@@ -140,9 +147,7 @@ class ApplicationsDatabase:
         Returns:
             str
         """
-        value = self.apps[name]["name"]
-        assert isinstance(value, str)
-        return value
+        return self.apps[name].name
 
     def get_files(self, name: str) -> set[str]:
         """
@@ -154,9 +159,7 @@ class ApplicationsDatabase:
         Returns:
             set of str.
         """
-        value = self.apps[name]["configuration_files"]
-        assert isinstance(value, set)
-        return value
+        return self.apps[name].configuration_files
 
     def get_app_names(self) -> set[str]:
         """

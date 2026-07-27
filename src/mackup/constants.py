@@ -1,5 +1,6 @@
 """Constants used in Mackup."""
 
+from enum import Enum
 from importlib.metadata import PackageNotFoundError, version
 
 # Support platforms
@@ -36,11 +37,13 @@ CUSTOM_APPS_DIR: str = ".mackup"
 # XDG-compliant directory for user defined app configs (relative to XDG_CONFIG_HOME)
 CUSTOM_APPS_DIR_XDG: str = "mackup/applications"
 
-# Supported engines
-ENGINE_DROPBOX: str = "dropbox"
-ENGINE_FS: str = "file_system"
-ENGINE_GDRIVE: str = "google_drive"
-ENGINE_ICLOUD: str = "icloud"
+class Engine(str, Enum):
+    """The closed set of storage engines Mackup can sync through."""
+
+    DROPBOX = "dropbox"
+    FILE_SYSTEM = "file_system"
+    GOOGLE_DRIVE = "google_drive"
+    ICLOUD = "icloud"
 
 DOCUMENTATION_URL: str = "https://github.com/lra/mackup/blob/master/doc/README.md"
 

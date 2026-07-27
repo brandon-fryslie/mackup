@@ -6,13 +6,7 @@ from pathlib import Path
 import pytest
 
 from mackup.config import Config, ConfigError
-from mackup.constants import (
-    ENGINE_DROPBOX,
-    ENGINE_FS,
-    ENGINE_GDRIVE,
-    ENGINE_ICLOUD,
-    MACKUP_CONFIG_FILE,
-)
+from mackup.constants import MACKUP_CONFIG_FILE, Engine
 
 
 def assert_correct_config_read(expected_directory):
@@ -74,7 +68,7 @@ class TestConfig(unittest.TestCase):
 
         # Should should do the same as the default, empty configuration
         assert isinstance(cfg.engine, str)
-        assert cfg.engine == ENGINE_DROPBOX
+        assert cfg.engine == Engine.DROPBOX
 
         assert isinstance(cfg.path, str)
         print(cfg.path)
@@ -93,7 +87,7 @@ class TestConfig(unittest.TestCase):
         cfg = Config("mackup-empty.cfg")
 
         assert isinstance(cfg.engine, str)
-        assert cfg.engine == ENGINE_DROPBOX
+        assert cfg.engine == Engine.DROPBOX
 
         assert isinstance(cfg.path, str)
         assert cfg.path == "/home/some_user/Dropbox"
@@ -111,7 +105,7 @@ class TestConfig(unittest.TestCase):
         cfg = Config("mackup-engine-dropbox.cfg")
 
         assert isinstance(cfg.engine, str)
-        assert cfg.engine == ENGINE_DROPBOX
+        assert cfg.engine == Engine.DROPBOX
 
         assert isinstance(cfg.path, str)
         assert cfg.path == "/home/some_user/Dropbox"
@@ -129,7 +123,7 @@ class TestConfig(unittest.TestCase):
         cfg = Config("mackup-engine-file_system-absolute.cfg")
 
         assert isinstance(cfg.engine, str)
-        assert cfg.engine == ENGINE_FS
+        assert cfg.engine == Engine.FILE_SYSTEM
 
         assert isinstance(cfg.path, str)
         assert cfg.path == "/some/absolute/folder"
@@ -147,7 +141,7 @@ class TestConfig(unittest.TestCase):
         cfg = Config("mackup-engine-file_system.cfg")
 
         assert isinstance(cfg.engine, str)
-        assert cfg.engine == ENGINE_FS
+        assert cfg.engine == Engine.FILE_SYSTEM
 
         assert isinstance(cfg.path, str)
         assert cfg.path.endswith(
@@ -169,7 +163,7 @@ class TestConfig(unittest.TestCase):
         cfg = Config("mackup-engine-google_drive.cfg")
 
         assert isinstance(cfg.engine, str)
-        assert cfg.engine == ENGINE_GDRIVE
+        assert cfg.engine == Engine.GOOGLE_DRIVE
 
         assert isinstance(cfg.path, str)
         assert cfg.path == "/Users/whatever/Google Drive"
@@ -187,7 +181,7 @@ class TestConfig(unittest.TestCase):
         cfg = Config("mackup-engine-icloud.cfg")
 
         assert isinstance(cfg.engine, str)
-        assert cfg.engine == ENGINE_ICLOUD
+        assert cfg.engine == Engine.ICLOUD
 
         assert isinstance(cfg.path, str)
         assert cfg.path == os.path.expanduser(
@@ -215,7 +209,7 @@ class TestConfig(unittest.TestCase):
         cfg = Config("mackup-apps_to_ignore.cfg")
 
         assert isinstance(cfg.engine, str)
-        assert cfg.engine == ENGINE_DROPBOX
+        assert cfg.engine == Engine.DROPBOX
 
         assert isinstance(cfg.path, str)
         assert cfg.path == "/home/some_user/Dropbox"
@@ -233,7 +227,7 @@ class TestConfig(unittest.TestCase):
         cfg = Config("mackup-apps_to_sync.cfg")
 
         assert isinstance(cfg.engine, str)
-        assert cfg.engine == ENGINE_DROPBOX
+        assert cfg.engine == Engine.DROPBOX
 
         assert isinstance(cfg.path, str)
         assert cfg.path == "/home/some_user/Dropbox"
@@ -251,7 +245,7 @@ class TestConfig(unittest.TestCase):
         cfg = Config("mackup-apps_to_ignore_and_sync.cfg")
 
         assert isinstance(cfg.engine, str)
-        assert cfg.engine == ENGINE_DROPBOX
+        assert cfg.engine == Engine.DROPBOX
 
         assert isinstance(cfg.path, str)
         assert cfg.path == "/home/some_user/Dropbox"
