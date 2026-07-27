@@ -482,9 +482,12 @@ def _diff_files(a: str, b: str) -> DiffResult:
             detail=_unified_diff(text_a.splitlines(), text_b.splitlines(), a, b),
         )
 
-    identical = filecmp.cmp(a, b, shallow=False)
-    detail = "" if identical else colors.yellow("  binary contents differ")
-    return DiffResult(identical=identical, detail=detail)
+    differs = _binary_differs(a, b)
+    if differs is None:
+        # Unreadable: not content-comparable, caller should just prompt.
+        return DiffResult(identical=False, detail="")
+    detail = colors.yellow("  binary contents differ") if differs else ""
+    return DiffResult(identical=not differs, detail=detail)
 
 
 def _diff_dirs(a: str, b: str) -> DiffResult:
@@ -501,11 +504,11 @@ def _diff_dirs(a: str, b: str) -> DiffResult:
         changed.extend(
             os.path.join(rel, name)
             for name in dcmp.common_files
-            if not filecmp.cmp(
+            if _binary_differs(
                 os.path.join(dcmp.left, name),
                 os.path.join(dcmp.right, name),
-                shallow=False,
             )
+            is not False
         )
         for name, sub in dcmp.subdirs.items():
             walk(sub, os.path.join(rel, name))
@@ -556,4 +559,12 @@ def _read_text(path: str) -> str | None:
         with open(path, encoding="utf-8") as text_file:
             return text_file.read()
     except (UnicodeDecodeError, OSError):
+        return None
+
+
+def _binary_differs(a: str, b: str) -> bool | None:
+    """Compare two files byte-for-byte, or None if either is unreadable."""
+    try:
+        return not filecmp.cmp(a, b, shallow=False)
+    except OSError:
         return None

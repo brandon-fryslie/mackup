@@ -327,6 +327,27 @@ class TestMackup(unittest.TestCase):
         with pytest.raises(SystemExit):
             utils.error(test_string)
 
+    def test_diff_paths_unreadable_file(self):
+        # An unreadable file (e.g. permissions) must degrade to the plain
+        # confirmation prompt instead of raising.
+        with tempfile.NamedTemporaryFile(delete=False) as tfile_a:
+            tfile_a.write(b"a")
+            file_a = tfile_a.name
+        with tempfile.NamedTemporaryFile(delete=False) as tfile_b:
+            tfile_b.write(b"b")
+            file_b = tfile_b.name
+
+        os.chmod(file_a, stat.S_IWRITE)
+
+        result = utils.diff_paths(file_a, file_b)
+        assert result.identical is False
+        assert result.detail == ""
+
+        # Let's clean up
+        os.chmod(file_a, stat.S_IWRITE | stat.S_IREAD)
+        utils.delete(file_a)
+        utils.delete(file_b)
+
     def test_failed_backup_location(self):
         """
         Tests for the error that should occur if the backup folder cannot be
