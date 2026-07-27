@@ -6,9 +6,47 @@ Mackup. Name, files, ...
 """
 
 import os
+from typing import NamedTuple
 
 from . import colors, utils
 from .mackup import Mackup
+
+
+class _CopyDirection(NamedTuple):
+    """Everything that differs between backing up and recovering, as data.
+
+    [LAW:one-type-per-behavior] backup and restore are one copy operation
+    instantiated twice, not two mirrored implementations.
+    """
+
+    verb: str  # "Backing up" / "Recovering", for the progress message.
+    diff_desc: str  # "home and Mackup" / "Mackup and home", for the drift message.
+    dst_location: str  # where the destination lives, for the confirm prompt.
+    confirm_force_hint: str  # confirm-prompt suffix; only backup mentions --force.
+    home_is_src: bool  # which of (home, mackup) is the source for this direction.
+    # Backup only: a home file that is already a symlink to its Mackup copy is
+    # counted as backed up via link_install, with nothing left to copy. Restore
+    # has no equivalent case, since the Mackup copy is always the real file.
+    skip_if_src_linked_to_dst: bool
+
+
+_BACKUP = _CopyDirection(
+    verb="Backing up",
+    diff_desc="home and Mackup",
+    dst_location="the Mackup folder",
+    confirm_force_hint=" (use --force to skip this prompt)",
+    home_is_src=True,
+    skip_if_src_linked_to_dst=True,
+)
+
+_RESTORE = _CopyDirection(
+    verb="Recovering",
+    diff_desc="Mackup and home",
+    dst_location="your home folder",
+    confirm_force_hint="",
+    home_is_src=False,
+    skip_if_src_linked_to_dst=False,
+)
 
 
 class ApplicationProfile:
@@ -54,45 +92,70 @@ class ApplicationProfile:
         Returns the home paths that could not be copied. The list is empty on a
         fully successful backup; a non-empty list is the caller's signal that
         the backup is partial and must not report success.
+        """
+        return self._copy_files(_BACKUP)
+
+    def copy_files_from_mackup_folder(self) -> list[str]:
+        """
+        Recover the application config files from the Mackup folder.
+
+        Returns the mackup paths that could not be copied back. The list is
+        empty on a fully successful restore; a non-empty list is the caller's
+        signal that the restore is partial and must not report success.
+        """
+        return self._copy_files(_RESTORE)
+
+    def _copy_files(self, direction: _CopyDirection) -> list[str]:
+        """
+        Copy config files one way between home and the Mackup folder.
+
+        Backup and restore are the same algorithm run in opposite directions;
+        `direction` supplies everything that differs (wording and the one real
+        asymmetry: only backup skips a file already linked to its Mackup copy).
 
         Algorithm:
             for config_file
-                if config_file exists and is a real file/folder
-                    if home/file is a symlink pointing to mackup/file
-                        skip (already backed up via link install)
-                    if exists mackup/file
+                if config_file exists at the source and is a real file/folder
+                    if applicable, skip when source is a symlink to destination
+                    if exists at the destination
                         are you sure?
                         if sure
-                            rm mackup/file
-                    cp home/file mackup/file
+                            rm destination
+                    cp source destination
         """
         # [LAW:dataflow-not-control-flow] failures flow up as data, not as a
         # traceback or a silent skip; the boundary turns them into a non-zero exit.
         failed_paths: list[str] = []
         for filename in self.files:
             (home_filepath, mackup_filepath) = self.get_filepaths(filename)
+            (src_filepath, dst_filepath) = (
+                (home_filepath, mackup_filepath)
+                if direction.home_is_src
+                else (mackup_filepath, home_filepath)
+            )
 
-            # If config_file exists and is a real file/folder
-            if (os.path.isfile(home_filepath) or os.path.isdir(home_filepath)):
-                # Check if home file is a symlink pointing to mackup file
+            # If config_file exists at the source and is a real file/folder
+            if os.path.isfile(src_filepath) or os.path.isdir(src_filepath):
+                # Backup only: source is already a symlink to destination
                 # (already backed up via link install)
                 if (
-                    os.path.islink(home_filepath)
-                    and os.path.exists(mackup_filepath)
-                    and os.path.samefile(home_filepath, mackup_filepath)
+                    direction.skip_if_src_linked_to_dst
+                    and os.path.islink(src_filepath)
+                    and os.path.exists(dst_filepath)
+                    and os.path.samefile(src_filepath, dst_filepath)
                 ):
                     colors.vlog(
-                        f"Skipping {home_filepath}\n"
-                        f"  already linked to\n  {mackup_filepath}",
+                        f"Skipping {src_filepath}\n"
+                        f"  already linked to\n  {dst_filepath}",
                         self.verbose,
                     )
                     continue
 
-                # If a backup already exists, compare against it. drift is None
-                # when there's no prior backup to compare.
+                # If a copy already exists at the destination, compare against
+                # it. drift is None when there's nothing to compare.
                 drift = (
-                    utils.diff_paths(home_filepath, mackup_filepath)
-                    if os.path.lexists(mackup_filepath)
+                    utils.diff_paths(src_filepath, dst_filepath)
+                    if os.path.lexists(dst_filepath)
                     else None
                 )
                 if drift is not None and drift.identical:
@@ -101,39 +164,40 @@ class ApplicationProfile:
 
                 if self.verbose:
                     colors.info_log(
-                        f"Backing up\n  {home_filepath}\n  to\n  {mackup_filepath} ...",
+                        f"{direction.verb}\n  {src_filepath}\n  to\n"
+                        f"  {dst_filepath} ...",
                     )
                 else:
-                    colors.info_log(f"Backing up {filename} ...")
+                    colors.info_log(f"{direction.verb} {filename} ...")
 
                 if self.dry_run:
                     continue
 
-                # An existing backup differs: show what changed, then confirm.
+                # An existing destination differs: show what changed, then confirm.
                 if drift is not None:
                     if drift.detail:
                         colors.warning_log(
-                            f"{filename} differs between home and Mackup:",
+                            f"{filename} differs between {direction.diff_desc}:",
                         )
                         print(drift.detail)
                     # Name it right
                     file_type: str
-                    if os.path.isfile(mackup_filepath):
+                    if os.path.isfile(dst_filepath):
                         file_type = "file"
-                    elif os.path.isdir(mackup_filepath):
+                    elif os.path.isdir(dst_filepath):
                         file_type = "folder"
-                    elif os.path.islink(mackup_filepath):
+                    elif os.path.islink(dst_filepath):
                         file_type = "link"
                     else:
-                        raise ValueError(f"Unsupported file: {mackup_filepath}")
+                        raise ValueError(f"Unsupported file: {dst_filepath}")
                     # Ask the user if he really wants to replace it
                     if utils.confirm(
-                        f"A {file_type} named {mackup_filepath} already exists in the"
-                        " Mackup folder.\nAre you sure that you want to"
-                        " replace it? (use --force to skip this prompt)",
+                        f"A {file_type} named {dst_filepath} already exists in"
+                        f" {direction.dst_location}.\nAre you sure that you want to"
+                        f" replace it?{direction.confirm_force_hint}",
                     ):
-                        # If confirmed, delete the file in Mackup
-                        utils.delete(mackup_filepath)
+                        # If confirmed, delete the file at the destination
+                        utils.delete(dst_filepath)
                     else:
                         continue
 
@@ -143,100 +207,13 @@ class ApplicationProfile:
                 # [LAW:one-type-per-behavior] every copy failure (permission, disk
                 # full, copytree's shutil.Error) is one OSError handled one way.
                 try:
-                    utils.copy(home_filepath, mackup_filepath)
+                    utils.copy(src_filepath, dst_filepath)
                 except OSError as e:
                     colors.error_log(
-                        f"Error: Unable to copy {home_filepath} to "
-                        f"{mackup_filepath}: {e}",
+                        f"Error: Unable to copy {src_filepath} to "
+                        f"{dst_filepath}: {e}",
                     )
-                    failed_paths.append(home_filepath)
-
-        return failed_paths
-
-    def copy_files_from_mackup_folder(self) -> list[str]:
-        """
-        Recover the application config files from the Mackup folder.
-
-        Returns the mackup paths that could not be copied back. The list is
-        empty on a fully successful restore; a non-empty list is the caller's
-        signal that the restore is partial and must not report success.
-
-        Algorithm:
-            for config_file
-                if config_file exists in mackup and is a real file/folder
-                    if exists home/file
-                        are you sure?
-                        if sure
-                            rm home/file
-                    cp mackup/file home/file
-        """
-        # [LAW:dataflow-not-control-flow] mirror of the backup path: failures
-        # flow up as data so the boundary can exit non-zero.
-        failed_paths: list[str] = []
-        for filename in self.files:
-            (home_filepath, mackup_filepath) = self.get_filepaths(filename)
-
-            # If config_file exists in mackup and is a real file/folder
-            if (os.path.isfile(mackup_filepath) or os.path.isdir(mackup_filepath)):
-                # If a home file already exists, compare against it. drift is
-                # None when there's no existing home file to compare.
-                drift = (
-                    utils.diff_paths(mackup_filepath, home_filepath)
-                    if os.path.lexists(home_filepath)
-                    else None
-                )
-                if drift is not None and drift.identical:
-                    colors.vlog(f"{filename} already in sync, skipping", self.verbose)
-                    continue
-
-                if self.verbose:
-                    colors.info_log(
-                        f"Recovering\n  {mackup_filepath}\n  to\n  {home_filepath} ...",
-                    )
-                else:
-                    colors.info_log(f"Recovering {filename} ...")
-
-                if self.dry_run:
-                    continue
-
-                # An existing home file differs: show what changed, then confirm.
-                if drift is not None:
-                    if drift.detail:
-                        colors.warning_log(
-                            f"{filename} differs between Mackup and home:",
-                        )
-                        print(drift.detail)
-                    # Name it right
-                    if os.path.isfile(home_filepath):
-                        file_type = "file"
-                    elif os.path.isdir(home_filepath):
-                        file_type = "folder"
-                    elif os.path.islink(home_filepath):
-                        file_type = "link"
-                    else:
-                        raise ValueError(f"Unsupported file: {home_filepath}")
-                    # Ask the user if he really wants to replace it
-                    if utils.confirm(
-                        f"A {file_type} named {home_filepath} already exists in your"
-                        " home folder.\nAre you sure that you want to"
-                        " replace it?",
-                    ):
-                        # If confirmed, delete the existing home file
-                        utils.delete(home_filepath)
-                    else:
-                        continue
-
-                # Copy the file
-                # [LAW:no-silent-failure] see copy_files_to_mackup_folder: report,
-                # record, and keep going so a partial restore is never silent.
-                try:
-                    utils.copy(mackup_filepath, home_filepath)
-                except OSError as e:
-                    colors.error_log(
-                        f"Error: Unable to copy {mackup_filepath} to "
-                        f"{home_filepath}: {e}",
-                    )
-                    failed_paths.append(mackup_filepath)
+                    failed_paths.append(src_filepath)
 
         return failed_paths
 
