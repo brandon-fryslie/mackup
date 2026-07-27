@@ -12,6 +12,17 @@ from . import colors, utils
 from .mackup import Mackup
 
 
+def _describe_path_type(path: str) -> str:
+    """Describe an existing path as "file", "folder", or "link" for prompts."""
+    if os.path.isfile(path):
+        return "file"
+    if os.path.isdir(path):
+        return "folder"
+    if os.path.islink(path):
+        return "link"
+    raise ValueError(f"Unsupported file: {path}")
+
+
 class _CopyDirection(NamedTuple):
     """Everything that differs between backing up and recovering, as data.
 
@@ -180,16 +191,7 @@ class ApplicationProfile:
                             f"{filename} differs between {direction.diff_desc}:",
                         )
                         print(drift.detail)
-                    # Name it right
-                    file_type: str
-                    if os.path.isfile(dst_filepath):
-                        file_type = "file"
-                    elif os.path.isdir(dst_filepath):
-                        file_type = "folder"
-                    elif os.path.islink(dst_filepath):
-                        file_type = "link"
-                    else:
-                        raise ValueError(f"Unsupported file: {dst_filepath}")
+                    file_type = _describe_path_type(dst_filepath)
                     # Ask the user if he really wants to replace it
                     if utils.confirm(
                         f"A {file_type} named {dst_filepath} already exists in"
@@ -256,15 +258,7 @@ class ApplicationProfile:
 
                 # Check if we already have a backup
                 if os.path.exists(mackup_filepath):
-                    # Name it right
-                    if os.path.isfile(mackup_filepath):
-                        file_type = "file"
-                    elif os.path.isdir(mackup_filepath):
-                        file_type = "folder"
-                    elif os.path.islink(mackup_filepath):
-                        file_type = "link"
-                    else:
-                        raise ValueError(f"Unsupported file: {mackup_filepath}")
+                    file_type = _describe_path_type(mackup_filepath)
 
                     # Ask the user if he really wants to replace it
                     if utils.confirm(
@@ -346,15 +340,7 @@ class ApplicationProfile:
 
                 # Check if there is already a file in the home folder
                 if os.path.exists(home_filepath):
-                    # Name it right
-                    if os.path.isfile(home_filepath):
-                        file_type = "file"
-                    elif os.path.isdir(home_filepath):
-                        file_type = "folder"
-                    elif os.path.islink(home_filepath):
-                        file_type = "link"
-                    else:
-                        raise ValueError(f"Unsupported file: {home_filepath}")
+                    file_type = _describe_path_type(home_filepath)
 
                     if utils.confirm(
                         f"You already have a {file_type} at {home_filepath}.\n"
