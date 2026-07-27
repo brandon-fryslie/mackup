@@ -15,9 +15,14 @@ from . import appsdb, config, utils
 class Mackup:
     """Main Mackup class."""
 
-    def __init__(self, config_file: str | None = None) -> None:
+    def __init__(
+        self,
+        config_file: str | None = None,
+        run_policy: utils.RunPolicy = utils.DEFAULT_RUN_POLICY,
+    ) -> None:
         """Mackup Constructor."""
         self._config: config.Config = config.Config(config_file)
+        self._run_policy: utils.RunPolicy = run_policy
 
         self.mackup_folder: str = self._config.fullpath
 
@@ -25,7 +30,7 @@ class Mackup:
         """Check if the current env is usable and has everything's required."""
 
         # Allow only explicit superuser usage
-        if os.geteuid() == 0 and not utils.CAN_RUN_AS_ROOT:
+        if os.geteuid() == 0 and not self._run_policy.can_run_as_root:
             utils.error(
                 "Running Mackup as superuser can be dangerous."
                 " Don't do it unless you know what you're doing!"
@@ -68,6 +73,7 @@ class Mackup:
                 "Mackup needs a directory to store your"
                 " configuration files\n"
                 f"Do you want to create it now? <{self.mackup_folder}>",
+                self._run_policy,
             ):
                 os.makedirs(self.mackup_folder)
             else:

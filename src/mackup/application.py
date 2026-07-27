@@ -64,7 +64,12 @@ class ApplicationProfile:
     """Instantiate this class with application specific data."""
 
     def __init__(
-        self, mackup: Mackup, files: set[str], dry_run: bool, verbose: bool,
+        self,
+        mackup: Mackup,
+        files: set[str],
+        dry_run: bool,
+        verbose: bool,
+        run_policy: utils.RunPolicy = utils.DEFAULT_RUN_POLICY,
     ) -> None:
         """
         Create an ApplicationProfile instance.
@@ -80,6 +85,7 @@ class ApplicationProfile:
         self.files: list[str] = sorted(files)
         self.dry_run: bool = dry_run
         self.verbose: bool = verbose
+        self.run_policy: utils.RunPolicy = run_policy
 
     def get_filepaths(self, filename: str) -> tuple[str, str]:
         """
@@ -197,6 +203,7 @@ class ApplicationProfile:
                         f"A {file_type} named {dst_filepath} already exists in"
                         f" {direction.dst_location}.\nAre you sure that you want to"
                         f" replace it?{direction.confirm_force_hint}",
+                        self.run_policy,
                     ):
                         # If confirmed, delete the file at the destination
                         utils.delete(dst_filepath)
@@ -265,6 +272,7 @@ class ApplicationProfile:
                         f"A {file_type} named {mackup_filepath} already exists in the"
                         " backup.\nAre you sure that you want to"
                         " replace it?",
+                        self.run_policy,
                     ):
                         # Delete the file in Mackup
                         utils.delete(mackup_filepath)
@@ -345,6 +353,7 @@ class ApplicationProfile:
                     if utils.confirm(
                         f"You already have a {file_type} at {home_filepath}.\n"
                         "Do you want to replace it with your backup?",
+                        self.run_policy,
                     ):
                         utils.delete(home_filepath)
                         utils.link(mackup_filepath, home_filepath)

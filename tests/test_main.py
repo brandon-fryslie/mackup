@@ -6,7 +6,7 @@ import unittest
 from io import StringIO
 from unittest.mock import Mock, patch
 
-from mackup import main
+from mackup import main, utils
 from mackup.appsdb import ApplicationsDatabase
 from mackup.mackup import Mackup
 
@@ -72,6 +72,7 @@ class TestBackupCopyFailureExit(unittest.TestCase):
             app_db=app_db,
             dry_run=False,
             verbose=False,
+            run_policy=utils.RunPolicy(),
         )
 
     def tearDown(self):

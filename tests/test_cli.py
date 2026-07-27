@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 import pytest
 
-from mackup import utils
 from mackup.main import main
 
 
@@ -62,11 +61,6 @@ class TestCLI(unittest.TestCase):
             f.write("[configuration_files]\n")
             f.write(f"{self.test_file_name}\n")
 
-        # Force yes to all prompts
-        utils.FORCE_YES = True
-        utils.FORCE_NO = False
-        utils.CAN_RUN_AS_ROOT = False
-
     def tearDown(self):
         """Clean up test environment after each test."""
         # Restore original HOME
@@ -87,18 +81,13 @@ class TestCLI(unittest.TestCase):
         if os.path.exists(self.test_storage):
             shutil.rmtree(self.test_storage)
 
-        # Reset utils flags
-        utils.FORCE_YES = False
-        utils.FORCE_NO = False
-        utils.CAN_RUN_AS_ROOT = False
-
     def test_backup_creates_mackup_folder(self):
         """Test that mackup backup creates the Mackup folder if it doesn't exist."""
         # Ensure Mackup folder doesn't exist
         assert not os.path.exists(self.mackup_folder)
 
         # Mock sys.argv to simulate 'mackup backup'
-        with patch("sys.argv", ["mackup", "backup"]):
+        with patch("sys.argv", ["mackup", "--force", "backup"]):
             main()
 
         # Check that Mackup folder was created
@@ -110,7 +99,7 @@ class TestCLI(unittest.TestCase):
         assert os.path.exists(self.test_file_path)
 
         # Run backup
-        with patch("sys.argv", ["mackup", "backup"]):
+        with patch("sys.argv", ["mackup", "--force", "backup"]):
             main()
 
         # Check that file was copied to Mackup folder
@@ -128,7 +117,7 @@ class TestCLI(unittest.TestCase):
     def test_restore_copies_file_back(self):
         """Test that mackup restore successfully copies a file back from backup."""
         # First, create a backup
-        with patch("sys.argv", ["mackup", "backup"]):
+        with patch("sys.argv", ["mackup", "--force", "backup"]):
             main()
 
         # Verify backup exists
@@ -140,7 +129,7 @@ class TestCLI(unittest.TestCase):
         assert not os.path.exists(self.test_file_path)
 
         # Run restore
-        with patch("sys.argv", ["mackup", "restore"]):
+        with patch("sys.argv", ["mackup", "--force", "restore"]):
             main()
 
         # Check that file was restored
@@ -162,7 +151,7 @@ class TestCLI(unittest.TestCase):
             assert f.read() == original_content
 
         # Step 1: Backup
-        with patch("sys.argv", ["mackup", "backup"]):
+        with patch("sys.argv", ["mackup", "--force", "backup"]):
             main()
 
         # Verify backup was created
@@ -179,7 +168,7 @@ class TestCLI(unittest.TestCase):
             assert f.read() == modified_content
 
         # Step 3: Restore (should replace modified file with backup)
-        with patch("sys.argv", ["mackup", "restore"]):
+        with patch("sys.argv", ["mackup", "--force", "restore"]):
             main()
 
         # Verify file was restored to original content
@@ -192,7 +181,7 @@ class TestCLI(unittest.TestCase):
         os.chmod(self.test_file_path, 0o600)
 
         # Run backup
-        with patch("sys.argv", ["mackup", "backup"]):
+        with patch("sys.argv", ["mackup", "--force", "backup"]):
             main()
 
         # Check backup file permissions
@@ -213,7 +202,7 @@ class TestCLI(unittest.TestCase):
         os.makedirs(self.mackup_folder, exist_ok=True)
 
         # Run restore (should not crash even though no backup exists)
-        with patch("sys.argv", ["mackup", "restore"]):
+        with patch("sys.argv", ["mackup", "--force", "restore"]):
             try:
                 main()
                 # If no exception is raised, the test passes
@@ -242,7 +231,7 @@ class TestCLI(unittest.TestCase):
             f.write(f"{test_folder_name}\n")
 
         # Run backup
-        with patch("sys.argv", ["mackup", "backup"]):
+        with patch("sys.argv", ["mackup", "--force", "backup"]):
             main()
 
         # Check that folder was copied
@@ -279,7 +268,7 @@ class TestCLI(unittest.TestCase):
             f.write(f"{test_folder_name}\n")
 
         # Run backup first
-        with patch("sys.argv", ["mackup", "backup"]):
+        with patch("sys.argv", ["mackup", "--force", "backup"]):
             main()
 
         # Delete the folder
@@ -287,7 +276,7 @@ class TestCLI(unittest.TestCase):
         assert not os.path.exists(test_folder_path)
 
         # Run restore
-        with patch("sys.argv", ["mackup", "restore"]):
+        with patch("sys.argv", ["mackup", "--force", "restore"]):
             main()
 
         # Check that folder was restored
@@ -307,7 +296,7 @@ class TestCLI(unittest.TestCase):
         assert not os.path.exists(self.mackup_folder)
 
         # Run restore - should exit with error when backup folder is missing
-        with patch("sys.argv", ["mackup", "restore"]):
+        with patch("sys.argv", ["mackup", "--force", "restore"]):
             with pytest.raises(SystemExit) as context:
                 main()
 
@@ -327,7 +316,7 @@ class TestCLI(unittest.TestCase):
 
     def test_backup_single_named_app(self):
         """mackup backup <app> backs up that application's files."""
-        with patch("sys.argv", ["mackup", "backup", "test-app"]):
+        with patch("sys.argv", ["mackup", "--force", "backup", "test-app"]):
             main()
 
         backed_up_file = os.path.join(self.mackup_folder, self.test_file_name)
@@ -365,7 +354,7 @@ class TestCLI(unittest.TestCase):
 
         # Even though test-app-2 is not in [applications_to_sync], naming it
         # explicitly backs it up.
-        with patch("sys.argv", ["mackup", "backup", "test-app-2"]):
+        with patch("sys.argv", ["mackup", "--force", "backup", "test-app-2"]):
             main()
 
         assert os.path.exists(os.path.join(self.mackup_folder, second_file_name))
@@ -373,13 +362,13 @@ class TestCLI(unittest.TestCase):
     def test_link_uninstall_single_app_skips_global_teardown(self):
         """Scoped link uninstall unlinks one app without the global teardown."""
         # Put the app under link management first.
-        with patch("sys.argv", ["mackup", "link", "install"]):
+        with patch("sys.argv", ["mackup", "--force", "link", "install"]):
             main()
         assert os.path.islink(self.test_file_path)
 
         # Uninstall just this app.
         buffer = io.StringIO()
-        with patch("sys.argv", ["mackup", "link", "uninstall", "test-app"]):
+        with patch("sys.argv", ["mackup", "--force", "link", "uninstall", "test-app"]):
             with contextlib.redirect_stdout(buffer):
                 main()
             # The global "all done" message must not appear for a scoped run.
@@ -392,14 +381,14 @@ class TestCLI(unittest.TestCase):
     def test_restore_single_named_app(self):
         """mackup restore <app> restores that application's files."""
         # Back up first, then remove the home file.
-        with patch("sys.argv", ["mackup", "backup", "test-app"]):
+        with patch("sys.argv", ["mackup", "--force", "backup", "test-app"]):
             main()
         assert os.path.exists(os.path.join(self.mackup_folder, self.test_file_name))
         os.remove(self.test_file_path)
         assert not os.path.exists(self.test_file_path)
 
         # Scoped restore.
-        with patch("sys.argv", ["mackup", "restore", "test-app"]):
+        with patch("sys.argv", ["mackup", "--force", "restore", "test-app"]):
             main()
 
         assert os.path.exists(self.test_file_path)
@@ -408,7 +397,7 @@ class TestCLI(unittest.TestCase):
 
     def test_link_install_single_named_app(self):
         """mackup link install <app> links that application's files."""
-        with patch("sys.argv", ["mackup", "link", "install", "test-app"]):
+        with patch("sys.argv", ["mackup", "--force", "link", "install", "test-app"]):
             main()
 
         # The home file is now a symlink into the Mackup folder.
@@ -420,13 +409,13 @@ class TestCLI(unittest.TestCase):
     def test_link_single_named_app(self):
         """mackup link <app> links that application's files from the storage."""
         # Put the file in the Mackup folder, then simulate a fresh home.
-        with patch("sys.argv", ["mackup", "backup", "test-app"]):
+        with patch("sys.argv", ["mackup", "--force", "backup", "test-app"]):
             main()
         os.remove(self.test_file_path)
         assert not os.path.exists(self.test_file_path)
 
         # Scoped link.
-        with patch("sys.argv", ["mackup", "link", "test-app"]):
+        with patch("sys.argv", ["mackup", "--force", "link", "test-app"]):
             main()
 
         # The home file is now a symlink into the Mackup folder.

@@ -67,6 +67,7 @@ class _Context:
     app_db: ApplicationsDatabase
     dry_run: bool
     verbose: bool
+    run_policy: utils.RunPolicy
 
 
 def _print_app_header(app_name: str, verbose: bool) -> None:
@@ -102,7 +103,11 @@ def _run_action(ctx: _Context, app_names: set[str], action: str) -> list[str]:
     failed_paths: list[str] = []
     for app_name in sorted(app_names):
         app = ApplicationProfile(
-            ctx.mckp, ctx.app_db.get_files(app_name), ctx.dry_run, ctx.verbose,
+            ctx.mckp,
+            ctx.app_db.get_files(app_name),
+            ctx.dry_run,
+            ctx.verbose,
+            ctx.run_policy,
         )
         _print_app_header(app_name, ctx.verbose)
         # link_install/link/link_uninstall return None (they report no copy
@@ -207,6 +212,7 @@ def _cmd_link_uninstall(args: dict[str, Any], ctx: _Context) -> None:
             " managed by Mackup will be unlinked and copied back"
             " to their original place, in your home folder.\n"
             "Are you sure?",
+            ctx.run_policy,
         )
     ):
         # Uninstall the apps except Mackup, which we'll uninstall last, to
@@ -219,7 +225,11 @@ def _cmd_link_uninstall(args: dict[str, Any], ctx: _Context) -> None:
         # Restore the Mackup config before any other config, as we might
         # need it to know about custom settings
         mackup_app = ApplicationProfile(
-            ctx.mckp, ctx.app_db.get_files(MACKUP_APP_NAME), ctx.dry_run, ctx.verbose,
+            ctx.mckp,
+            ctx.app_db.get_files(MACKUP_APP_NAME),
+            ctx.dry_run,
+            ctx.verbose,
+            ctx.run_policy,
         )
         mackup_app.link_uninstall()
 
@@ -255,14 +265,18 @@ def _cmd_link(args: dict[str, Any], ctx: _Context) -> None:
     # Restore the Mackup config before any other config, as we might
     # need it to know about custom settings
     mackup_app = ApplicationProfile(
-        ctx.mckp, ctx.app_db.get_files(MACKUP_APP_NAME), ctx.dry_run, ctx.verbose,
+        ctx.mckp,
+        ctx.app_db.get_files(MACKUP_APP_NAME),
+        ctx.dry_run,
+        ctx.verbose,
+        ctx.run_policy,
     )
     _print_app_header(MACKUP_APP_NAME, ctx.verbose)
     mackup_app.link()
 
     # Initialize again the apps db, as the Mackup config might have
     # changed it
-    ctx.mckp = Mackup(ctx.config_file)
+    ctx.mckp = Mackup(ctx.config_file, ctx.run_policy)
     ctx.app_db = ApplicationsDatabase()
 
     # Restore the rest of the app configs, using the restored Mackup config
@@ -290,26 +304,21 @@ def main() -> None:
     if args["--force"] and args["--force-no"]:
         sys.exit("Options --force and --force-no are mutually exclusive.")
 
+    run_policy = utils.RunPolicy(
+        force_yes=args["--force"],
+        force_no=args["--force-no"],
+        can_run_as_root=args["--root"],
+    )
+
     config_file: str | None = args.get("--config-file")
     ctx = _Context(
         config_file=config_file,
-        mckp=Mackup(config_file),
+        mckp=Mackup(config_file, run_policy),
         app_db=ApplicationsDatabase(),
         dry_run=args["--dry-run"],
         verbose=args["--verbose"],
+        run_policy=run_policy,
     )
-
-    # If we want to answer mackup with "yes" for each question
-    if args["--force"]:
-        utils.FORCE_YES = True
-
-    # If we want to answer mackup with "no" for each question
-    if args["--force-no"]:
-        utils.FORCE_NO = True
-
-    # Allow mackup to be run as root
-    if args["--root"]:
-        utils.CAN_RUN_AS_ROOT = True
 
     if args["list"]:
         ctx.mckp.check_for_usable_environment()

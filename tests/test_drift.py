@@ -123,11 +123,7 @@ def test_backup_skips_when_already_in_sync(tmp_path, monkeypatch):
     mck = Mock(spec=Mackup)
     mck.mackup_folder = str(mackup_dir)
     profile = ApplicationProfile(mck, {".myrc"}, dry_run=False, verbose=False)
-    utils.FORCE_YES = True
-    try:
-        profile.copy_files_to_mackup_folder()
-    finally:
-        utils.FORCE_YES = False
+    profile.copy_files_to_mackup_folder()
 
     # Same inode => the file was never deleted and recopied.
     assert (mackup_dir / ".myrc").stat().st_ino == mackup_before

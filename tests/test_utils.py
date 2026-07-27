@@ -21,17 +21,25 @@ class TestMackup(unittest.TestCase):
     def test_confirm_yes(self):
         # Override the input used in utils
         with patch.object(utils, "input", return_value="Yes", create=True):
-            assert utils.confirm("Answer Yes to this question")
+            assert utils.confirm("Answer Yes to this question", utils.RunPolicy())
 
     def test_confirm_no(self):
         # Override the input used in utils
         with patch.object(utils, "input", return_value="No", create=True):
-            assert not utils.confirm("Answer No to this question")
+            assert not utils.confirm("Answer No to this question", utils.RunPolicy())
 
     def test_confirm_typo(self):
         # Override the input used in utils
         with patch.object(utils, "input", return_value="No", create=True):
-            assert not utils.confirm("Answer garbage to this question")
+            assert not utils.confirm(
+                "Answer garbage to this question", utils.RunPolicy(),
+            )
+
+    def test_confirm_force_yes_skips_prompt(self):
+        assert utils.confirm("Unused question", utils.RunPolicy(force_yes=True))
+
+    def test_confirm_force_no_skips_prompt(self):
+        assert not utils.confirm("Unused question", utils.RunPolicy(force_no=True))
 
     def test_delete_file(self):
         # Create a tmp file

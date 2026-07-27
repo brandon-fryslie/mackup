@@ -18,29 +18,37 @@ from xml.parsers.expat import ExpatError
 
 from . import colors, constants
 
-# Flag that controls how user confirmation works.
-# If True, the user wants to say "yes" to everything.
-FORCE_YES: bool = False
-# If True, the user wants to say "no" to everything.
-FORCE_NO: bool = False
 
-# Flag that control if mackup can be run as root
-CAN_RUN_AS_ROOT: bool = False
+class RunPolicy(NamedTuple):
+    """Confirmation and root-permission behavior for one run.
+
+    [LAW:no-shared-mutable-globals] threaded explicitly through Mackup and
+    ApplicationProfile instead of read from a module-level flag.
+    """
+
+    force_yes: bool = False
+    force_no: bool = False
+    can_run_as_root: bool = False
 
 
-def confirm(question: str) -> bool:
+# Immutable, so safe to share as the default RunPolicy across callers.
+DEFAULT_RUN_POLICY: RunPolicy = RunPolicy()
+
+
+def confirm(question: str, policy: RunPolicy) -> bool:
     """
     Ask the user if he really wants something to happen.
 
     Args:
         question(str): What can happen
+        policy(RunPolicy): This run's forced-answer behavior
 
     Returns:
         (boolean): Confirmed or not
     """
-    if FORCE_YES:
+    if policy.force_yes:
         return True
-    if FORCE_NO:
+    if policy.force_no:
         return False
 
     while True:
