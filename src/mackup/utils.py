@@ -208,9 +208,7 @@ def error(message: str) -> NoReturn:
     Args:
         message(str): The message to display.
     """
-    fail: str = "\033[91m"
-    end: str = "\033[0m"
-    sys.exit(fail + f"Error: {message}" + end)
+    sys.exit(colors.bright_red(f"Error: {message}"))
 
 
 def get_dropbox_folder_location() -> str:

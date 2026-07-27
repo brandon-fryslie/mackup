@@ -58,20 +58,6 @@ from .constants import MACKUP_APP_NAME, VERSION
 from .mackup import Mackup
 
 
-class ColorFormatCodes:
-    BLUE = "\033[34m"
-    BOLD = "\033[1m"
-    NORMAL = "\033[0m"
-
-
-def header(text: str) -> str:
-    return ColorFormatCodes.BLUE + text + ColorFormatCodes.NORMAL
-
-
-def bold(text: str) -> str:
-    return ColorFormatCodes.BOLD + text + ColorFormatCodes.NORMAL
-
-
 @dataclass
 class _Context:
     """Shared state threaded through the command handlers."""
@@ -85,8 +71,8 @@ class _Context:
 
 def _print_app_header(app_name: str, verbose: bool) -> None:
     if verbose:
-        header_str = header("---")
-        print(f"\n{header_str} {bold(app_name)} {header_str}")
+        header_str = colors.blue("---")
+        print(f"\n{header_str} {colors.bold(app_name)} {header_str}")
 
 
 def _resolve_apps(app_name: str | None, ctx: _Context) -> set[str]:

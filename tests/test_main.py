@@ -12,11 +12,29 @@ from mackup.mackup import Mackup
 
 
 class TestMain(unittest.TestCase):
-    def test_main_header(self):
-        assert main.header("blah") == "\033[34mblah\033[0m"
+    def test_print_app_header_verbose_colors_the_frame_and_name(self):
+        captured_out = StringIO()
+        sys.stdout = captured_out
+        try:
+            main._print_app_header("blah", verbose=True)
+        finally:
+            sys.stdout = sys.__stdout__
 
-    def test_main_bold(self):
-        assert main.bold("blah") == "\033[1mblah\033[0m"
+        # Blue "---" framing either side of a bold app name -- the same
+        # visible output previously produced by main.header()/main.bold().
+        header_str = "\033[34m---\033[0m"
+        bold_name = "\033[1mblah\033[0m"
+        assert captured_out.getvalue() == f"\n{header_str} {bold_name} {header_str}\n"
+
+    def test_print_app_header_not_verbose_prints_nothing(self):
+        captured_out = StringIO()
+        sys.stdout = captured_out
+        try:
+            main._print_app_header("blah", verbose=False)
+        finally:
+            sys.stdout = sys.__stdout__
+
+        assert captured_out.getvalue() == ""
 
 
 class TestBackupCopyFailureExit(unittest.TestCase):

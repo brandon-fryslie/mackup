@@ -38,6 +38,10 @@ def red(s: str) -> str:
     return colorize(31, s)
 
 
+def bright_red(s: str) -> str:
+    return colorize(91, s)
+
+
 def cyan(s: str) -> str:
     return colorize(36, s)
 
